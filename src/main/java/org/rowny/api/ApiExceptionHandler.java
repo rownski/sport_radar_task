@@ -20,7 +20,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         HttpStatus status = switch (exception.reason()) {
             case INVALID_INPUT -> HttpStatus.BAD_REQUEST;
             case MATCH_NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case TEAM_IN_USE -> HttpStatus.CONFLICT;
+            case TEAM_IN_USE, MATCH_FINISHED -> HttpStatus.CONFLICT;
         };
         return ResponseEntity.status(status).body(new ErrorResponse(status.value(), exception.getMessage()));
     }

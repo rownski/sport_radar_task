@@ -36,3 +36,6 @@ target/
 .classpath
 .project
 .settings/
+
+# Local Docker Compose credentials
+.env

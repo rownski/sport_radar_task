@@ -2,6 +2,7 @@ package org.rowny.api;
 
 import org.rowny.api.generated.MatchesApi;
 import org.rowny.api.generated.model.MatchDetails;
+import org.rowny.api.generated.model.HistoryPage;
 import org.rowny.api.generated.model.StartMatchRequest;
 import org.rowny.api.generated.model.UpdateScoreRequest;
 import org.rowny.domain.Scoreboard;
@@ -40,5 +41,10 @@ public class MatchesController implements MatchesApi {
     @Override
     public ResponseEntity<List<MatchDetails>> getSummary() {
         return ResponseEntity.ok(scoreboard.getSummary().stream().map(MatchMapper::details).toList());
+    }
+
+    @Override
+    public ResponseEntity<HistoryPage> getHistory(Integer page, Integer size) {
+        return ResponseEntity.ok(MatchMapper.history(scoreboard.getHistory(page, size)));
     }
 }

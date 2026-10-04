@@ -4,7 +4,6 @@ import org.rowny.api.generated.model.Team;
 import org.rowny.domain.MatchRepository;
 import org.rowny.domain.Scoreboard;
 import org.rowny.domain.TeamCatalog;
-import org.rowny.persistence.InMemoryMatchRepository;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,11 +23,6 @@ public class ScoreboardConfiguration {
             throw new IllegalArgumentException("A restricted tournament roster must contain exactly 48 distinct FIFA teams");
         }
         return new TeamCatalog(properties.teams().stream().map(allTeams::canonicalName).toList());
-    }
-
-    @Bean
-    MatchRepository matchRepository() {
-        return new InMemoryMatchRepository();
     }
 
     @Bean
