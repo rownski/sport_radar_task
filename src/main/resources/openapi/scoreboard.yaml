@@ -1,0 +1,214 @@
+openapi: 3.1.2
+info:
+  title: World Cup scoreboard
+  version: 1.0.0
+  description: |
+    A scoreboard for matches in progress. Team names match the canonical FIFA
+    list case-insensitively; aliases and surrounding whitespace are not accepted.
+    All teams are enabled by default. A configured tournament roster restricts
+    matches to exactly 48 distinct teams, but this contract lists all supported teams.
+tags:
+  - name: Matches
+paths:
+  /matches:
+    post:
+      tags: [Matches]
+      operationId: startMatch
+      summary: Start a match
+      description: |
+        The two teams must be distinct and neither can participate in another
+        match in progress. Each omitted score independently defaults to zero.
+        IDs increase in start order and are not reused until application restart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartMatchRequest'
+            example:
+              homeTeam: Mexico
+              awayTeam: Canada
+      responses:
+        '201':
+          description: Match started
+          headers:
+            Location:
+              description: Identifier URI of the created match
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchDetails'
+        '400':
+          $ref: '#/components/responses/InvalidInput'
+        '409':
+          $ref: '#/components/responses/TeamConflict'
+    get:
+      tags: [Matches]
+      operationId: getSummary
+      summary: Summarize matches in progress
+      description: |
+        Ordered by total score descending, then most recently started match.
+        Each string begins with the actual match ID, not its ranking position.
+        Updating a score does not change start order. An empty scoreboard returns [].
+      responses:
+        '200':
+          description: Ordered summary
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example:
+                - '1. Mexico 0 - Canada 5'
+  /matches/{id}/score:
+    parameters:
+      - $ref: '#/components/parameters/MatchId'
+    patch:
+      tags: [Matches]
+      operationId: updateScore
+      summary: Replace supplied scores
+      description: |
+        At least one score must be supplied. Omitted scores remain unchanged.
+        Scores may decrease to correct mistakes. Explicit nulls are invalid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScoreRequest'
+            example:
+              awayScore: 5
+      responses:
+        '200':
+          description: Updated match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchDetails'
+        '400':
+          $ref: '#/components/responses/InvalidInput'
+        '404':
+          $ref: '#/components/responses/MatchNotFound'
+  /matches/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MatchId'
+    delete:
+      tags: [Matches]
+      operationId: finishMatch
+      summary: Finish and remove a match
+      description: |
+        Returns the final match details and removes the match from the scoreboard.
+        Both teams can start new matches. Missing or already-finished IDs return 404.
+      responses:
+        '200':
+          description: Final match details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchDetails'
+        '400':
+          $ref: '#/components/responses/InvalidInput'
+        '404':
+          $ref: '#/components/responses/MatchNotFound'
+components:
+  parameters:
+    MatchId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+  schemas:
+    Team:
+      $ref: './teams.yaml'
+    StartMatchRequest:
+      type: object
+      required: [homeTeam, awayTeam]
+      properties:
+        homeTeam:
+          $ref: '#/components/schemas/Team'
+        awayTeam:
+          $ref: '#/components/schemas/Team'
+        homeScore:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 2147483647
+          default: 0
+        awayScore:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 2147483647
+          default: 0
+    UpdateScoreRequest:
+      type: object
+      minProperties: 1
+      anyOf:
+        - required: [homeScore]
+        - required: [awayScore]
+      properties:
+        homeScore:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 2147483647
+        awayScore:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 2147483647
+    MatchDetails:
+      type: object
+      required: [id, homeTeam, awayTeam, homeScore, awayScore]
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+        homeTeam:
+          $ref: '#/components/schemas/Team'
+        awayTeam:
+          $ref: '#/components/schemas/Team'
+        homeScore:
+          type: integer
+          format: int32
+          minimum: 0
+        awayScore:
+          type: integer
+          format: int32
+          minimum: 0
+    ErrorResponse:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: integer
+          format: int32
+        message:
+          type: string
+  responses:
+    InvalidInput:
+      description: Invalid request, score, match ID, or team selection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    MatchNotFound:
+      description: No match in progress with this ID
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TeamConflict:
+      description: A team already participates in a match in progress
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

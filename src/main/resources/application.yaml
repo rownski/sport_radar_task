@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: world-cup-scoreboard
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+    mapper:
+      allow-coercion-of-scalars: false
+
+scoreboard:
+  # Empty means all supported FIFA teams. Otherwise supply exactly 48 distinct names.
+  teams: []
