@@ -51,7 +51,7 @@ paths:
       summary: Summarize matches in progress
       description: |
         Ordered by total score descending, then most recently started match.
-        Each string begins with the actual match ID, not its ranking position.
+        Each object contains the actual match ID, team names, and scores.
         Updating a score does not change start order. An empty scoreboard returns [].
       responses:
         '200':
@@ -61,9 +61,13 @@ paths:
               schema:
                 type: array
                 items:
-                  type: string
+                  $ref: '#/components/schemas/MatchDetails'
               example:
-                - '1. Mexico 0 - Canada 5'
+                - id: 1
+                  homeTeam: Mexico
+                  awayTeam: Canada
+                  homeScore: 0
+                  awayScore: 5
   /matches/{id}/score:
     parameters:
       - $ref: '#/components/parameters/MatchId'

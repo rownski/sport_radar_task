@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -52,7 +53,7 @@ class MatchesApiTest {
 
         mvc.perform(get("/matches"))
                 .andExpect(status().isOk())
-                .andExpect(content().json("[\"" + id + ". Mexico 0 - Canada 5\"]"));
+                .andExpect(content().json("[" + matchJson(id, "Mexico", "Canada", 0, 5) + "]", JsonCompareMode.STRICT));
 
         mvc.perform(delete("/matches/{id}", id))
                 .andExpect(status().isOk())
@@ -78,8 +79,8 @@ class MatchesApiTest {
         long away = start("{\"homeTeam\":\"Spain\",\"awayTeam\":\"Brazil\",\"awayScore\":3}");
 
         mvc.perform(get("/matches"))
-                .andExpect(content().json("[\"" + away + ". Spain 0 - Brazil 3\",\""
-                        + home + ". Mexico 2 - Canada 0\"]", org.springframework.test.json.JsonCompareMode.STRICT));
+                .andExpect(content().json("[" + matchJson(away, "Spain", "Brazil", 0, 3) + ","
+                        + matchJson(home, "Mexico", "Canada", 2, 0) + "]", JsonCompareMode.STRICT));
     }
 
     @Test
@@ -87,7 +88,16 @@ class MatchesApiTest {
         long id = start("{\"homeTeam\":\"côte d'ivoire\",\"awayTeam\":\"TÜRKİYE\"}");
         mvc.perform(get("/matches"))
                 .andExpect(status().isOk())
-                .andExpect(content().json("[\"" + id + ". Côte d'Ivoire 0 - Türkiye 0\"]"));
+                .andExpect(content().json("[" + matchJson(id, "Côte d'Ivoire", "Türkiye", 0, 0) + "]",
+                        JsonCompareMode.STRICT));
+    }
+
+    @Test
+    void emptySummaryIsAnEmptyJsonArray() throws Exception {
+        mvc.perform(get("/matches"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().json("[]", JsonCompareMode.STRICT));
     }
 
     @Test
@@ -121,8 +131,8 @@ class MatchesApiTest {
 
         mvc.perform(get("/matches"))
                 .andExpect(status().isOk())
-                .andExpect(content().json("[\"" + second + ". Spain 3 - Brazil 2\",\""
-                        + first + ". Mexico 1 - Canada 4\"]", org.springframework.test.json.JsonCompareMode.STRICT));
+                .andExpect(content().json("[" + matchJson(second, "Spain", "Brazil", 3, 2) + ","
+                        + matchJson(first, "Mexico", "Canada", 1, 4) + "]", JsonCompareMode.STRICT));
     }
 
     @Test
@@ -170,7 +180,8 @@ class MatchesApiTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").isNotEmpty());
-        mvc.perform(get("/matches")).andExpect(content().json("[\"" + id + ". Mexico 0 - Canada 0\"]"));
+        mvc.perform(get("/matches")).andExpect(content().json(
+                "[" + matchJson(id, "Mexico", "Canada", 0, 0) + "]", JsonCompareMode.STRICT));
     }
 
     @ParameterizedTest
@@ -189,6 +200,12 @@ class MatchesApiTest {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
         mvc.perform(patch("/matches/1/score").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
+    }
+
+    private static String matchJson(long id, String homeTeam, String awayTeam, int homeScore, int awayScore) {
+        return """
+                {"id":%d,"homeTeam":"%s","awayTeam":"%s","homeScore":%d,"awayScore":%d}
+                """.formatted(id, homeTeam, awayTeam, homeScore, awayScore);
     }
 
     private long start(String body) throws Exception {

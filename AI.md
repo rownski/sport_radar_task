@@ -104,11 +104,41 @@ When OpenAPI Generator 7.25.0 rejected the OpenAPI 3.2.1 document, the assistant
 
 Spring Boot and generator versions remain unchanged. No schema validation bypass was approved or used.
 
+### 10. IntelliJ ignore rules
+
+> add idea files to gitignore
+
+### 11. Other IDE metadata
+
+> what about other files, should .classpath be included?
+
+### 12. Ignore-rule authorization
+
+> add it then
+
+The assistant added IntelliJ metadata patterns, then `.classpath`, `.project`, and `.settings/` to `.gitignore`. The metadata files themselves were not removed.
+
+### 13. Proposed history/database feature
+
+> I need one last task. I need to implement one extra functionality. I think about match history that is accessible even after finished matches. I want a postgresql docker database.
+
+The assistant asked about persistence scope, database access, history responses, timestamps, pagination, Docker scope, and finished-match behavior. These choices were not settled and the feature was not implemented.
+
+### 14. Pause history and correct listing
+
+> Put the planning of this feature for now, there is a mistake, I have asked for a structured response in listing
+
+The assistant proposed changing `GET /matches` to an array of the existing `MatchDetails` objects, retaining ordering and empty `[]`, and updating the contract, generated interface, mapping, tests, and documentation.
+
+### 15. Correction authorization
+
+> fix
+
 ## Suggestions accepted, changed, or excluded
 
 - Accepted: Spring Boot; API-first Maven generation; independent domain library; replaceable in-memory repository; structured start/update/finish responses.
 - Clarified by user: initial scores may be supplied; partial replacements may decrease scores; team conflicts are forbidden; finishing removes data; a restricted roster must have exactly 48 entries.
-- Changed: summary is not structured JSON, but formatted strings with stable match IDs.
+- Initially selected: formatted summary strings with stable match IDs. Superseded by prompt 14: listing now returns structured `MatchDetails` objects and leaves display formatting to clients.
 - Changed after tool verification and explicit user approval: contract version 3.2.1 to 3.1.2 because the released generator parser rejected 3.2.1.
 - Excluded: Swagger UI, UUIDs, external runtime team lookups, historical match storage, and handwritten transport models.
 - Suggested implementation details in the approved plan: immutable matches, single-instance synchronization, monotonic ID-based start ordering, one module with package boundaries, domain and API tests.
@@ -134,12 +164,15 @@ Spring Boot and generator versions remain unchanged. No schema validation bypass
 - `mvn -B generate-sources` failed for OpenAPI 3.2.1: the bundled parser rejected the version and fell back to Swagger 2 validation (`openapi is unexpected`, `swagger is missing`). User approved switching the contract to 3.1.2, not suppressing validation.
 - After the approved change, `mvn -B generate-sources` and `mvn -B compile` succeeded. Generated sources were inspected for case-insensitive enum parsing, defaults, schema constraints, and `@JsonSetter(nulls = Nulls.FAIL)`; they were not manually edited.
 - First `mvn -B test`: 72 tests passed. Further checks added Unicode API names, missing positive IDs, schema/enum round-trips, error media types, and stronger assertions for startup failures.
-- Final `mvn -B clean verify`: **75 tests, 0 failures, 0 errors, 0 skipped**. Fresh generation, compilation, test execution, and executable-JAR packaging succeeded.
+- Initial complete `mvn -B clean verify`: **75 tests, 0 failures, 0 errors, 0 skipped**. Fresh generation, compilation, test execution, and executable-JAR packaging succeeded.
 - The Java-only domain compiled separately using `javac --release 21 -d target/domain-library-check src/main/java/org/rowny/domain/*.java`, with no framework dependencies on the classpath.
 - A foreground Python smoke harness launched the executable JAR bound to localhost on an ephemeral port, checked all four endpoints, canonical names, validation errors, removal/404, and stable ID summaries, then attempted eight conflicting starts concurrently: exactly one succeeded and seven returned `409`. The harness terminated its own server afterward.
 - A read-only comparison against FIFA's embedded data confirmed all 211 local names, including order. Network access is not part of the application or automated tests.
 - `git diff --check` passed during verification. Existing IDE metadata and pre-existing staged files were not staged, discarded, or committed by the assistant.
 - Remaining non-failing tool warnings: generator's OpenAPI 3.1 support is labelled beta, generated Spring nullable annotations trigger deprecation notices, and the default Spring test/Mockito integration self-attaches a Java agent. Generated output and framework test machinery were not patched to conceal warnings.
+- Listing correction: updated the OpenAPI response items to reference `MatchDetails`, reused existing object mapping, removed string formatting, and changed API assertions to strict structured-array comparisons. Added an explicit empty-list response test.
+- Correction verification: `mvn -B clean verify` regenerated the API as `ResponseEntity<List<MatchDetails>>` and passed **76 tests, 0 failures, 0 errors, 0 skipped**, then packaged the executable JAR. No generated sources were edited manually.
+- A live HTTP smoke of the corrected JAR verified structured match arrays, stable IDs, score/start-order sorting, partial score corrections, removal, and empty `[]`; its temporary localhost server was terminated afterward. `git diff --check` also passed. The history/PostgreSQL feature remains paused and storage is unchanged.
 
 ## Review boundaries
 

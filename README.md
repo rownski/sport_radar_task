@@ -8,7 +8,7 @@ A Java 21 scoreboard library with a Spring Boot REST adapter. The project starte
 - Start with independently optional scores, defaulting to `0–0`.
 - Replace supplied scores on update; omitted scores remain unchanged. Corrections may decrease scores. Negative scores, explicit nulls, and empty updates are invalid.
 - Finish removes a match and returns its structured final details. Missing or already-finished matches return `404`.
-- Summary sorts by total score descending, then most recently started. Return strings containing actual match IDs, not ranking positions: `"1. Mexico 0 - Canada 5"`. Return `[]` when empty.
+- Summary sorts by total score descending, then most recently started. Return structured match objects containing IDs, team names, and scores. Return `[]` when empty.
 - Accept canonical FIFA team names case-insensitively, without aliases or whitespace normalization. Return canonical names.
 - Enable all FIFA teams by default. An optional tournament list must contain exactly 48 distinct supported teams. The API contract still lists every supported team.
 
@@ -23,7 +23,7 @@ Versions: Java **21**, Spring Boot **4.1.1**, OpenAPI Generator **7.25.0**, Open
 | POST | `/matches` | `201`, structured created match |
 | PATCH | `/matches/{id}/score` | `200`, structured updated match |
 | DELETE | `/matches/{id}` | `200`, structured final match |
-| GET | `/matches` | `200`, ordered string array |
+| GET | `/matches` | `200`, ordered array of structured matches |
 
 Errors: `400` for invalid input, `404` for an unknown match, and `409` when a team already participates in an active match.
 
@@ -31,6 +31,12 @@ Start, update, and finish return this shape:
 
 ```json
 {"id":1,"homeTeam":"Mexico","awayTeam":"Canada","homeScore":0,"awayScore":5}
+```
+
+Listing returns an array of those same objects:
+
+```json
+[{"id":1,"homeTeam":"Mexico","awayTeam":"Canada","homeScore":0,"awayScore":5}]
 ```
 
 Error shape:
@@ -64,7 +70,7 @@ curl -X PATCH http://localhost:8080/matches/1/score \
   -d '{"awayScore":5}'
 
 curl http://localhost:8080/matches
-# ["1. Mexico 0 - Canada 5"]
+# [{"id":1,"homeTeam":"Mexico","awayTeam":"Canada","homeScore":0,"awayScore":5}]
 
 curl -X DELETE http://localhost:8080/matches/1
 ```
@@ -113,7 +119,7 @@ Use FIFA's exact spellings, such as `USA`, `Korea Republic`, `Côte d'Ivoire`, a
 - **Simple concurrency:** synchronize complete scoreboard operations, including team conflict checks and insertion. A concurrent map alone would not make that sequence atomic. This is deliberately single-instance; future database storage needs transactions and uniqueness constraints, not just a different map.
 - **Ordering without clocks:** monotonically allocated IDs also establish start order. Updating never changes it. Use a widened total score to avoid integer overflow in sorting.
 - **Local team catalogue:** a canonical FIFA schema generates the API enum and supplies runtime validation through application wiring. There is no runtime external lookup or second manually maintained team list.
-- **Formatted summary:** follows the requested output, but is less extensible than structured JSON. The underlying library returns structured matches; formatting belongs to the API adapter.
+- **Structured summary:** listing reuses the same generated match model as the other endpoints. Clients can format display text themselves; IDs and scores remain separately accessible. This replaces the initial formatted-string response following the user's correction.
 - **Removal, not history:** finishing releases teams immediately. There is intentionally no finished-match archive.
 - **No durable state:** matches and ID allocation reset on restart. IDs are not reused within one run, but are not globally unique across restarts.
 
@@ -123,13 +129,15 @@ The process was: clarify each operation; document approved choices; define the c
 
 Verified with Java 21.0.10 and Maven 3.9.16:
 
-- `mvn -B clean verify`: **75 tests passed**, no failures, errors, or skips; executable JAR built from freshly generated sources.
+- `mvn -B clean verify` after the structured-list correction: **76 tests passed**, no failures, errors, or skips; executable JAR built from freshly generated sources.
 - Domain: 27 tests, including simultaneous team conflicts, concurrent partial updates, score corrections, immutable snapshots, finish behavior, and ordering/overflow.
-- API: 38 tests using the generated interfaces and real Spring context, covering payload validation, case-insensitive and Unicode names, errors, stable ID formatting, and lifecycle.
+- API: 39 tests using the generated interfaces and real Spring context, covering strict structured-list responses, ordering, empty arrays, payload validation, case-insensitive and Unicode names, errors, stable IDs, and lifecycle.
 - Configuration: 9 tests covering all 211 schema/enum names and valid/invalid restricted rosters; repository: 1 test covering replacement, snapshots, deletion, and ID allocation.
-- Executable-JAR live HTTP smoke: lifecycle, validation, conflicts, summary formatting, and eight concurrent conflicting starts (one `201`, seven `409`). The temporary server was stopped afterward.
+- Executable-JAR live HTTP smoke after the correction: structured arrays, stable IDs, score/start ordering, score corrections, removal, and empty `[]`. The initial smoke also covered validation, conflicts, and eight concurrent conflicting starts (one `201`, seven `409`). Both temporary servers were stopped afterward.
 - Domain sources also compiled with plain `javac --release 21`, without Spring or generated code on the classpath.
 - Local catalogue compared against FIFA's published page: all 211 names match, in source order. Builds and tests do not require FIFA network access.
+
+Match-history/PostgreSQL planning is paused at the user's request; this correction does not change storage or finish behavior.
 
 ## Reference sources
 

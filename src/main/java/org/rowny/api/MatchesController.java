@@ -38,7 +38,7 @@ public class MatchesController implements MatchesApi {
     }
 
     @Override
-    public ResponseEntity<List<String>> getSummary() {
-        return ResponseEntity.ok(scoreboard.getSummary().stream().map(MatchMapper::summary).toList());
+    public ResponseEntity<List<MatchDetails>> getSummary() {
+        return ResponseEntity.ok(scoreboard.getSummary().stream().map(MatchMapper::details).toList());
     }
 }
