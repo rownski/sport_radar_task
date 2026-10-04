@@ -2,7 +2,7 @@ package org.rowny.domain;
 
 public final class ScoreboardException extends RuntimeException {
     public enum Reason {
-        INVALID_INPUT, MATCH_NOT_FOUND, TEAM_IN_USE
+        INVALID_INPUT, MATCH_NOT_FOUND, TEAM_IN_USE, MATCH_FINISHED
     }
 
     private final Reason reason;

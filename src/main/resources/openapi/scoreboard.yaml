@@ -1,9 +1,9 @@
 openapi: 3.1.2
 info:
   title: World Cup scoreboard
-  version: 1.0.0
+  version: 1.1.0
   description: |
-    A scoreboard for matches in progress. Team names match the canonical FIFA
+    A persistent scoreboard with finished-match history. Team names match the canonical FIFA
     list case-insensitively; aliases and surrounding whitespace are not accepted.
     All teams are enabled by default. A configured tournament roster restricts
     matches to exactly 48 distinct teams, but this contract lists all supported teams.
@@ -18,7 +18,7 @@ paths:
       description: |
         The two teams must be distinct and neither can participate in another
         match in progress. Each omitted score independently defaults to zero.
-        IDs increase in start order and are not reused until application restart.
+        Numeric IDs persist across restarts; allocation can leave gaps.
       requestBody:
         required: true
         content:
@@ -78,6 +78,7 @@ paths:
       description: |
         At least one score must be supplied. Omitted scores remain unchanged.
         Scores may decrease to correct mistakes. Explicit nulls are invalid.
+        Finished matches cannot be updated and return 409.
       requestBody:
         required: true
         content:
@@ -97,16 +98,58 @@ paths:
           $ref: '#/components/responses/InvalidInput'
         '404':
           $ref: '#/components/responses/MatchNotFound'
+        '409':
+          $ref: '#/components/responses/MatchFinished'
+  /matches/history:
+    get:
+      tags: [Matches]
+      operationId: getHistory
+      summary: List finished matches
+      description: |
+        Finished matches only, ordered by completion time descending, then ID
+        descending to break ties. Timestamps are returned in UTC. Pages are zero-based.
+        A page past the end returns 200 with empty items and the actual totalItems.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Page of finished matches
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryPage'
+              example:
+                items: []
+                page: 0
+                size: 20
+                totalItems: 0
+        '400':
+          $ref: '#/components/responses/InvalidInput'
   /matches/{id}:
     parameters:
       - $ref: '#/components/parameters/MatchId'
     delete:
       tags: [Matches]
       operationId: finishMatch
-      summary: Finish and remove a match
+      summary: Finish and archive a match
       description: |
-        Returns the final match details and removes the match from the scoreboard.
-        Both teams can start new matches. Missing or already-finished IDs return 404.
+        Returns final match details, removes the match from the active scoreboard,
+        and retains its history. Both teams can start new matches.
+        Missing IDs return 404; already-finished matches return 409.
       responses:
         '200':
           description: Final match details
@@ -118,6 +161,8 @@ paths:
           $ref: '#/components/responses/InvalidInput'
         '404':
           $ref: '#/components/responses/MatchNotFound'
+        '409':
+          $ref: '#/components/responses/MatchFinished'
 components:
   parameters:
     MatchId:
@@ -188,6 +233,39 @@ components:
           type: integer
           format: int32
           minimum: 0
+    HistoryMatchDetails:
+      allOf:
+        - $ref: '#/components/schemas/MatchDetails'
+        - type: object
+          required: [startedAt, finishedAt]
+          properties:
+            startedAt:
+              type: string
+              format: date-time
+            finishedAt:
+              type: string
+              format: date-time
+    HistoryPage:
+      type: object
+      required: [items, page, size, totalItems]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryMatchDetails'
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
     ErrorResponse:
       type: object
       required: [status, message]
@@ -205,13 +283,19 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     MatchNotFound:
-      description: No match in progress with this ID
+      description: No match with this ID
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     TeamConflict:
       description: A team already participates in a match in progress
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    MatchFinished:
+      description: The match is already finished
       content:
         application/json:
           schema:

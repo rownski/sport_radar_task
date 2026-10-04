@@ -5,7 +5,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.rowny.api.generated.model.Team;
 import org.rowny.domain.Scoreboard;
+import org.rowny.domain.MatchRepository;
 import org.rowny.domain.TeamCatalog;
+import org.rowny.persistence.InMemoryMatchRepository;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.yaml.snakeyaml.Yaml;
 
@@ -19,7 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ScoreboardConfigurationTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withUserConfiguration(ScoreboardConfiguration.class);
+            .withUserConfiguration(ScoreboardConfiguration.class)
+            .withBean(MatchRepository.class, InMemoryMatchRepository::new);
 
     @Test
     void defaultsToEverySupportedFifaTeam() {

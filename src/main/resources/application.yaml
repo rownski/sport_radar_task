@@ -1,6 +1,13 @@
 spring:
   application:
     name: world-cup-scoreboard
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/scoreboard}
+    username: ${DB_USER:scoreboard}
+    password: ${DB_PASSWORD:scoreboard_dev}
+  sql:
+    init:
+      mode: never
   jackson:
     deserialization:
       accept-float-as-int: false

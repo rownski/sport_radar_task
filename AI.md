@@ -4,7 +4,7 @@
 
 The user created an empty Java 21 Maven project in IntelliJ IDEA. No AI tools were used before this conversation. Existing IDE metadata is user work and is left untouched.
 
-This implementation uses OpenCode with GPT-6.1 Sol (OpenAI) for requirements clarification, design suggestions, documentation, code, tests, and investigating tool failures. OpenCode file/search/patch tools inspect and change the repository; shell tools run Java, Maven, and read-only source extraction; web-fetch tools consult documentation. No subagents were used.
+This implementation uses OpenCode with GPT-6.1 Sol (OpenAI) for requirements clarification, design suggestions, documentation, code, tests, and investigating tool failures. OpenCode file/search/patch tools inspect and change the repository; shell tools run Java, Maven, Docker, and read-only source extraction; web-fetch tools consult documentation. No subagents were used.
 
 OpenAPI Generator, rather than the language model, generates API interfaces, request/response models, enums, and schema-driven validation. Maven and Java verify the result. The user selected the requirements and approved the plan; approval is not a claim of a completed human code audit.
 
@@ -122,7 +122,7 @@ The assistant added IntelliJ metadata patterns, then `.classpath`, `.project`, a
 
 > I need one last task. I need to implement one extra functionality. I think about match history that is accessible even after finished matches. I want a postgresql docker database.
 
-The assistant asked about persistence scope, database access, history responses, timestamps, pagination, Docker scope, and finished-match behavior. These choices were not settled and the feature was not implemented.
+The assistant asked about persistence scope, database access, history responses, timestamps, pagination, Docker scope, and finished-match behavior. These choices were not settled at this point; implementation came after prompts 16–20.
 
 ### 14. Pause history and correct listing
 
@@ -134,14 +134,55 @@ The assistant proposed changing `GET /matches` to an array of the existing `Matc
 
 > fix
 
+### 16. Resume history planning
+
+> comeback to planning of history of matches
+
+### 17. History design decisions
+
+```text
+1. both
+2. jdbc
+3. yes
+4. pagination default values, mostly recently first
+5. both
+6. score update for finished match should return 409, repeated finish I assume as well
+```
+
+These answers selected persistent active and finished matches, JDBC, structured timestamped history, newest-first pagination, both services in Docker, and `409` for mutations of finished matches.
+
+### 18. Pagination, initialization, and IDE access
+
+```text
+1. yes
+2. yes
+3. yes
+4. No, just init sql
+5. expose for IDE
+```
+
+The approvals refer to `page=0`, `size=20`, maximum size 100, invalid values returning 400; the `items/page/size/totalItems` envelope; unchanged existing response fields; rejecting Flyway in favor of init SQL; and exposing PostgreSQL locally for IDE access.
+
+### 19. Final pagination edge case and branch request
+
+> it is ok, before implementing create a feature branch
+
+The accepted plan specifies `200` with empty items and the actual total for pages beyond the end, UTC timestamps, deterministic ID tie-breakers, transactional mutations, active-team database uniqueness, persistent storage, PostgreSQL 18.6, and init scripts running only on an empty volume. The assistant proposed the branch name `feature/match-history` and waited for Build mode.
+
+### 20. Feature implementation authorization
+
+> go
+
+The assistant checked that the working tree was clean and created `feature/match-history` from `main` before changing application files. No commit or push was requested or performed.
+
 ## Suggestions accepted, changed, or excluded
 
 - Accepted: Spring Boot; API-first Maven generation; independent domain library; replaceable in-memory repository; structured start/update/finish responses.
-- Clarified by user: initial scores may be supplied; partial replacements may decrease scores; team conflicts are forbidden; finishing removes data; a restricted roster must have exactly 48 entries.
+- Clarified by user: initial scores may be supplied; partial replacements may decrease scores; team conflicts are forbidden; a restricted roster must have exactly 48 entries. Initial finish behavior removed data; history now retains it and finished mutations return 409.
 - Initially selected: formatted summary strings with stable match IDs. Superseded by prompt 14: listing now returns structured `MatchDetails` objects and leaves display formatting to clients.
 - Changed after tool verification and explicit user approval: contract version 3.2.1 to 3.1.2 because the released generator parser rejected 3.2.1.
-- Excluded: Swagger UI, UUIDs, external runtime team lookups, historical match storage, and handwritten transport models.
-- Suggested implementation details in the approved plan: immutable matches, single-instance synchronization, monotonic ID-based start ordering, one module with package boundaries, domain and API tests.
+- Excluded: Swagger UI, UUIDs, external runtime team lookups, and handwritten transport models. For history, the user rejected Flyway; no ORM, filtering, or extra timestamp fields on existing responses were added.
+- Initially accepted: immutable matches, single-instance synchronization, ID-based start ordering, one module with package boundaries, domain and API tests. JDBC now owns atomic transactions, active-team constraints, and row locks; persisted timestamp ordering replaces the initial ID-only storage ordering.
 
 ## Artifacts guiding implementation
 
@@ -156,6 +197,10 @@ The assistant proposed changing `GET /matches` to an array of the existing `Matc
 - `src/main/resources/openapi/teams.yaml`: extracted canonical catalogue, checked against the FIFA page and against the generated enum. The Wikipedia FIFA-code list was also consulted, but not used as the catalogue source once FIFA's own embedded data was located.
 - Test source: `ScoreboardTest`, `MatchesApiTest`, `ScoreboardConfigurationTest`, and `InMemoryMatchRepositoryTest`. These were written after the initial implementation, not presented as test-driven development.
 - Maven test reports: `target/surefire-reports/`; executable artifact: `target/wc_score_board-1.0-SNAPSHOT.jar`. Both are build output and excluded from Git.
+- History artifacts: `src/main/resources/db/init.sql`, `JdbcMatchRepository`, `MatchHistoryEntry`/`MatchHistoryPage`, `compose.yaml`, `Dockerfile`, `.dockerignore`, and `.env.example`. OpenAPI generates the new transport models rather than copying the domain records.
+- [PostgreSQL release policy](https://www.postgresql.org/support/versioning/) and [Docker Hub's official 18.6-alpine metadata](https://hub.docker.com/v2/repositories/library/postgres/tags/18.6-alpine) confirmed the selected stable image. Docker pulled digest `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873`.
+- Spring Boot 4.1.1 dependency metadata supplies PostgreSQL JDBC 42.7.13 and Testcontainers 2.0.5. The [Testcontainers 2.0.5 PostgreSQL source](https://raw.githubusercontent.com/testcontainers/testcontainers-java/2.0.5/modules/postgresql/src/main/java/org/testcontainers/postgresql/PostgreSQLContainer.java) was consulted for its current API/package.
+- `JdbcMatchRepositoryTest` and `PostgresTestSupport` use actual PostgreSQL initialized from the application schema, not an H2 approximation.
 
 ## Verification log
 
@@ -172,8 +217,20 @@ The assistant proposed changing `GET /matches` to an array of the existing `Matc
 - Remaining non-failing tool warnings: generator's OpenAPI 3.1 support is labelled beta, generated Spring nullable annotations trigger deprecation notices, and the default Spring test/Mockito integration self-attaches a Java agent. Generated output and framework test machinery were not patched to conceal warnings.
 - Listing correction: updated the OpenAPI response items to reference `MatchDetails`, reused existing object mapping, removed string formatting, and changed API assertions to strict structured-array comparisons. Added an explicit empty-list response test.
 - Correction verification: `mvn -B clean verify` regenerated the API as `ResponseEntity<List<MatchDetails>>` and passed **76 tests, 0 failures, 0 errors, 0 skipped**, then packaged the executable JAR. No generated sources were edited manually.
-- A live HTTP smoke of the corrected JAR verified structured match arrays, stable IDs, score/start-order sorting, partial score corrections, removal, and empty `[]`; its temporary localhost server was terminated afterward. `git diff --check` also passed. The history/PostgreSQL feature remains paused and storage is unchanged.
+- A live HTTP smoke of the corrected JAR verified structured match arrays, stable IDs, score/start-order sorting, partial score corrections, removal, and empty `[]`; its temporary localhost server was terminated afterward. `git diff --check` also passed. At this milestone history was still paused.
+
+### History verification
+
+- Docker daemon 29.8.2 and Compose 5.6.0 were available. Branch creation preceded implementation, as requested.
+- After contract generation and JDBC wiring, the first PostgreSQL-backed `mvn -B test` passed **92 tests**. Additional tests covered adapter recreation, conflict rollback, injected team-release failure/rollback, database checks, finish-time ties, cross-instance concurrency, and history snapshot immutability.
+- `mvn -B clean verify` then passed **104 tests, 0 failures, 0 errors, 0 skipped**: domain 32, configuration 9, API 50, in-memory adapter 2, JDBC adapter 11. Both integration suites used PostgreSQL 18.6-alpine through Testcontainers 2.0.5 and the production `db/init.sql`.
+- `docker compose config --quiet` passed. `docker compose -p scoreboard-history-check build app` built a Java 21 multi-stage image and generated the API inside the build. Docker image packaging intentionally skips tests because no nested Docker daemon is provided; full tests ran separately on the host.
+- A foreground smoke harness used the isolated `scoreboard-history-check` project with ephemeral host ports, after checking its named verification volume did not already exist. It checked the history envelope, UTC timestamps, active response compatibility, 400/404/409 behavior, pagination past the end, and SQL access using PostgreSQL's `psql`.
+- The harness ran `compose down` without deleting the volume, then recreated app and database containers. Active matches, identical finished history, and ID allocation survived. Eight simultaneous conflicting HTTP starts returned one 201 and seven 409.
+- Cleanup removed only the newly created verification project's containers, network, and volume. It did not use the user's normal Compose project or existing volumes. Existing in-memory application state was not imported.
+- The extended domain compiled independently with plain `javac --release 21`; it still has no Spring, JDBC, or generated-model dependencies. Earlier non-failing generator/test warnings remain; no generated sources were manually edited.
+- A final concurrency test paused history reading after its count while another transaction finished a match; count and items stayed on the same repeatable-read snapshot. The final `mvn -B clean verify` passed **105 tests, 0 failures, 0 errors, 0 skipped** (JDBC suite now 12 tests). Compose validation and `git diff --check` passed again.
 
 ## Review boundaries
 
-The assistant inspected the generated code, source changes, configuration behavior, and test results. This is AI review plus automated verification, not evidence of a completed independent human review or production certification. The user approved requirements and the version adjustment. Authentication, distributed deployment, database storage, and historical match records are outside the implemented scope.
+The assistant inspected generated code, source changes, database behavior, configuration, and test results. This is AI review plus automated verification, not evidence of a completed independent human review or production certification. The user approved requirements, version adjustment, and history choices. Authentication, a production database security/backup strategy, automatic schema migrations, retention rules, and a complete distributed deployment remain outside scope.

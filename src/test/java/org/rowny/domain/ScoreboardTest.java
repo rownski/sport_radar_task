@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.rowny.domain.ScoreboardException.Reason.INVALID_INPUT;
 import static org.rowny.domain.ScoreboardException.Reason.MATCH_NOT_FOUND;
+import static org.rowny.domain.ScoreboardException.Reason.MATCH_FINISHED;
 import static org.rowny.domain.ScoreboardException.Reason.TEAM_IN_USE;
 
 class ScoreboardTest {
@@ -130,13 +131,14 @@ class ScoreboardTest {
     }
 
     @Test
-    void finishingReturnsFinalDetailsRemovesMatchAndReleasesTeams() {
+    void finishingReturnsFinalDetailsArchivesMatchAndReleasesTeams() {
         Match match = scoreboard.startMatch("Mexico", "Canada", 0, 5);
 
         assertThat(scoreboard.finishMatch(match.id())).isEqualTo(match);
         assertThat(scoreboard.getSummary()).isEmpty();
-        assertReason(MATCH_NOT_FOUND, () -> scoreboard.finishMatch(match.id()));
-        assertReason(MATCH_NOT_FOUND, () -> scoreboard.updateScore(match.id(), 1, null));
+        assertReason(MATCH_FINISHED, () -> scoreboard.finishMatch(match.id()));
+        assertReason(MATCH_FINISHED, () -> scoreboard.updateScore(match.id(), 1, null));
+        assertThat(scoreboard.getHistory(0, 20).items()).extracting(MatchHistoryEntry::match).containsExactly(match);
         assertThat(scoreboard.startMatch("Canada", "Mexico", null, null).id()).isGreaterThan(match.id());
     }
 
@@ -156,6 +158,21 @@ class ScoreboardTest {
     @Test
     void anEmptyScoreboardHasAnEmptySummary() {
         assertThat(scoreboard.getSummary()).isEmpty();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"-1, 20", "0, 0", "0, -1", "0, 101"})
+    void rejectsInvalidHistoryPagination(int page, int size) {
+        assertReason(INVALID_INPUT, () -> scoreboard.getHistory(page, size));
+    }
+
+    @Test
+    void emptyAndPastEndHistoryHaveEmptyItems() {
+        assertThat(scoreboard.getHistory(0, 20)).isEqualTo(new MatchHistoryPage(List.of(), 0, 20, 0));
+        Match match = scoreboard.startMatch("Mexico", "Canada", null, null);
+        scoreboard.finishMatch(match.id());
+        assertThat(scoreboard.getHistory(Integer.MAX_VALUE, 100))
+                .isEqualTo(new MatchHistoryPage(List.of(), Integer.MAX_VALUE, 100, 1));
     }
 
     @Test

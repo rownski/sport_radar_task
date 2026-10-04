@@ -5,14 +5,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.rowny.domain.Match;
-import org.rowny.domain.Scoreboard;
+import org.rowny.support.PostgresTestSupport;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -25,16 +25,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class MatchesApiTest {
+class MatchesApiTest extends PostgresTestSupport {
     @Autowired
     private MockMvc mvc;
 
     @Autowired
-    private Scoreboard scoreboard;
+    private JdbcTemplate jdbc;
 
     @BeforeEach
     void clearMatches() {
-        scoreboard.getSummary().stream().map(Match::id).forEach(scoreboard::finishMatch);
+        jdbc.update("DELETE FROM active_match_teams");
+        jdbc.update("DELETE FROM matches");
     }
 
     @Test
@@ -65,10 +66,10 @@ class MatchesApiTest {
 
         mvc.perform(get("/matches")).andExpect(status().isOk()).andExpect(content().json("[]"));
         mvc.perform(delete("/matches/{id}", id))
-                .andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404));
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409));
         mvc.perform(patch("/matches/{id}/score", id).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"homeScore\":1}"))
-                .andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404));
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409));
 
         start("{\"homeTeam\":\"Canada\",\"awayTeam\":\"Mexico\"}");
     }
@@ -199,6 +200,66 @@ class MatchesApiTest {
         mvc.perform(post("/matches").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
         mvc.perform(patch("/matches/1/score").contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void historyDefaultsExcludeActiveMatchesAndExposeUtcTimestamps() throws Exception {
+        long id = start("{\"homeTeam\":\"Mexico\",\"awayTeam\":\"Canada\",\"awayScore\":5}");
+        start("{\"homeTeam\":\"Spain\",\"awayTeam\":\"Brazil\"}");
+        mvc.perform(delete("/matches/{id}", id)).andExpect(status().isOk());
+
+        mvc.perform(get("/matches/history"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalItems").value(1))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value((int) id))
+                .andExpect(jsonPath("$.items[0].homeTeam").value("Mexico"))
+                .andExpect(jsonPath("$.items[0].awayTeam").value("Canada"))
+                .andExpect(jsonPath("$.items[0].homeScore").value(0))
+                .andExpect(jsonPath("$.items[0].awayScore").value(5))
+                .andExpect(jsonPath("$.items[0].startedAt").value(org.hamcrest.Matchers.endsWith("Z")))
+                .andExpect(jsonPath("$.items[0].finishedAt").value(org.hamcrest.Matchers.endsWith("Z")));
+    }
+
+    @Test
+    void historyPaginationIsNewestFinishedFirstAndKeepsTotalsPastTheEnd() throws Exception {
+        long first = start("{\"homeTeam\":\"Mexico\",\"awayTeam\":\"Canada\"}");
+        long second = start("{\"homeTeam\":\"Spain\",\"awayTeam\":\"Brazil\"}");
+        mvc.perform(delete("/matches/{id}", second)).andExpect(status().isOk());
+        mvc.perform(delete("/matches/{id}", first)).andExpect(status().isOk());
+
+        mvc.perform(get("/matches/history").param("page", "0").param("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].id").value((int) first))
+                .andExpect(jsonPath("$.totalItems").value(2)).andExpect(jsonPath("$.items.length()").value(1));
+        mvc.perform(get("/matches/history").param("page", "1").param("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].id").value((int) second))
+                .andExpect(jsonPath("$.page").value(1)).andExpect(jsonPath("$.size").value(1));
+        mvc.perform(get("/matches/history").param("page", "2147483647").param("size", "100"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty())
+                .andExpect(jsonPath("$.totalItems").value(2));
+    }
+
+    @Test
+    void emptyHistoryReturnsThePageEnvelope() throws Exception {
+        mvc.perform(get("/matches/history"))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"items\":[],\"page\":0,\"size\":20,\"totalItems\":0}", JsonCompareMode.STRICT));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"-1", "abc", "2147483648"})
+    void rejectsInvalidHistoryPages(String page) throws Exception {
+        mvc.perform(get("/matches/history").param("page", page))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1", "101", "abc", "2147483648"})
+    void rejectsInvalidHistorySizes(String size) throws Exception {
+        mvc.perform(get("/matches/history").param("size", size))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
     }
 

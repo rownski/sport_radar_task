@@ -1,17 +1,17 @@
 package org.rowny.domain;
 
 import java.util.List;
-import java.util.Optional;
 
-/** Storage port. One scoreboard owns access; IDs must increase in match-start order. */
+/** Storage port. Mutations must atomically enforce active-team and finished-match rules. */
 public interface MatchRepository {
-    long nextId();
+    Match startMatch(String homeTeam, String awayTeam, int homeScore, int awayScore);
 
-    void save(Match match);
+    Match updateScore(long id, Integer homeScore, Integer awayScore);
 
-    Optional<Match> findById(long id);
+    Match finishMatch(long id);
 
-    List<Match> findAll();
+    /** Matches ordered by total score descending, then start order descending. */
+    List<Match> findActive();
 
-    void deleteById(long id);
+    MatchHistoryPage findHistory(int page, int size);
 }
